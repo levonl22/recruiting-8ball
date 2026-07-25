@@ -354,11 +354,13 @@ async function init() {
     );
   }
 
-  // Android Chrome/Firefox support this. iOS Safari has no web haptic API.
+  // Android Chrome only. Needs sticky user activation (a tap first).
+  // OS can still mute it: DND, silent, battery saver, haptic intensity = 0.
   function pulseHaptic() {
     try {
       if (typeof navigator.vibrate === "function") {
-        navigator.vibrate([18, 32, 18]);
+        navigator.vibrate(0);
+        navigator.vibrate(45);
       }
     } catch {
       // Ignore — unsupported or blocked.
@@ -375,7 +377,6 @@ async function init() {
       [1.5, -0.7],
     ];
 
-    pulseHaptic();
     beats.forEach(([x, y], index) => {
       setTimeout(() => {
         shellPos.impulse(x * 0.055, y * 0.05, 0);
@@ -398,12 +399,14 @@ async function init() {
     state = "busy";
     stage.classList.add("is-active");
     stage.setAttribute("aria-busy", "true");
+    // Harmless if activate() already pulsed; helps shake-triggered reveals
+    // after the page has sticky user activation from an earlier tap.
+    pulseHaptic();
 
     const text = pickFortune();
     applyFortune(text);
 
     if (reduceMotion) {
-      pulseHaptic();
       tweenZoom(1, 260);
       fadeMesh(ball.mark, 0, 160);
       fadeMesh(ball.words, 1, 220, 120);
@@ -452,8 +455,13 @@ async function init() {
   }
 
   function activate() {
-    if (state === "idle") reveal();
-    else if (state === "revealed") reset();
+    if (state === "idle") {
+      // Call vibrate in the same turn as the tap so Chrome allows it.
+      pulseHaptic();
+      reveal();
+    } else if (state === "revealed") {
+      reset();
+    }
   }
 
   // ---- input ------------------------------------------------------------
