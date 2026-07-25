@@ -59,8 +59,10 @@ const FORTUNES = [
 const SHAKE_MS = 1000;
 const ZOOM_MS = 900;
 const RESET_MS = 700;
-const MOTION_THRESHOLD = 20;
-const MOTION_COOLDOWN_MS = 1400;
+const MOTION_COOLDOWN_MS = 1200;
+const SHAKE_SPIKE = 2.8;
+const SHAKE_SCORE_NEED = 18;
+const SHAKE_WINDOW_MS = 600;
 const DIE_DAMPING = 4.6;
 const DRAG_LIMIT = 0.5;
 
@@ -532,21 +534,25 @@ async function init() {
 
   let lastMotionSample = null;
   let motionListening = false;
+  let shakeScore = 0;
+  let shakeWindowStart = 0;
 
-  function onDeviceMotion(event) {
-    // Safari often fills accelerationIncludingGravity; some WebKit builds only
-    // fill acceleration. Accept either.
-    const accel = event.accelerationIncludingGravity || event.acceleration;
-    if (!accel || (accel.x == null && accel.y == null && accel.z == null)) {
-      return;
+  function motionSpike(event) {
+    // Prefer linear acceleration (near 0 at rest). Safari usually provides it
+    // after permission; fall back to jerk on the gravity-included vector.
+    const linear = event.acceleration;
+    if (linear && (linear.x != null || linear.y != null || linear.z != null)) {
+      return Math.hypot(linear.x || 0, linear.y || 0, linear.z || 0);
     }
 
-    const x = accel.x || 0;
-    const y = accel.y || 0;
-    const z = accel.z || 0;
-    const magnitude = Math.hypot(x, y, z);
+    const grav = event.accelerationIncludingGravity;
+    if (!grav || (grav.x == null && grav.y == null && grav.z == null)) {
+      return 0;
+    }
 
-    // Frame-to-frame jerk — more reliable on iOS than absolute magnitude alone.
+    const x = grav.x || 0;
+    const y = grav.y || 0;
+    const z = grav.z || 0;
     let delta = 0;
     if (lastMotionSample) {
       delta = Math.hypot(
@@ -556,21 +562,55 @@ async function init() {
       );
     }
     lastMotionSample = { x, y, z };
+    return delta;
+  }
 
-    if (state !== "idle") return;
+  function snapToIdleForShake() {
+    tweens.clear();
+    zoom = 0;
+    camera.position.copy(CAM_IDLE);
+    ball.words.material.opacity = 0;
+    ball.words.visible = false;
+    ball.mark.material.opacity = 1;
+    ball.mark.visible = true;
+    dieRot.damping = DIE_DAMPING;
+    stage.classList.remove("is-active");
+    announce("");
+    state = "idle";
+    stage.setAttribute("aria-busy", "false");
+  }
 
-    if (delta > 3 || magnitude > 12) {
-      shellPos.impulse(x * 0.002, y * 0.002, 0);
-      dieRot.impulse(y * 0.05, x * 0.05, 0);
-    }
+  function onDeviceMotion(event) {
+    const spike = motionSpike(event);
+    if (spike <= 0) return;
 
     const now = Date.now();
-    const shook =
-      delta > 8 || magnitude > MOTION_THRESHOLD;
-    if (shook && now - lastMotionTrigger > MOTION_COOLDOWN_MS) {
-      lastMotionTrigger = now;
-      reveal();
+    if (now - shakeWindowStart > SHAKE_WINDOW_MS) {
+      shakeScore = 0;
+      shakeWindowStart = now;
     }
+
+    if (spike >= SHAKE_SPIKE) {
+      shakeScore += spike;
+      if (state === "idle" || state === "revealed") {
+        const grav = event.accelerationIncludingGravity;
+        shellPos.impulse((grav?.x || 0) * 0.002, (grav?.y || 0) * 0.002, 0);
+        dieRot.impulse((grav?.y || 0) * 0.05, (grav?.x || 0) * 0.05, 0);
+      }
+    }
+
+    if (shakeScore < SHAKE_SCORE_NEED) return;
+    if (now - lastMotionTrigger < MOTION_COOLDOWN_MS) return;
+    if (state === "busy") return;
+
+    lastMotionTrigger = now;
+    shakeScore = 0;
+
+    // First Safari tap usually opens the permission sheet AND reveals a
+    // fortune, so the next shake happens while state is "revealed". Treat
+    // that as "go again" instead of ignoring the shake.
+    if (state === "revealed") snapToIdleForShake();
+    reveal();
   }
 
   function enableMotion() {
@@ -579,39 +619,41 @@ async function init() {
     window.addEventListener("devicemotion", onDeviceMotion, { passive: true });
   }
 
-  // iOS Safari requires requestPermission() in a direct user-gesture turn.
-  // Call it synchronously (no async/await), and ask for orientation too —
-  // WebKit gates both behind the same prompt on many versions.
+  // iOS: requestPermission must run in the gesture turn (no async/await).
+  // Request DeviceMotion first; orientation is optional backup on older WebKit.
   function requestMotionPermission() {
     const motion = window.DeviceMotionEvent;
     const orientation = window.DeviceOrientationEvent;
-    const needsPermission =
-      typeof motion?.requestPermission === "function" ||
-      typeof orientation?.requestPermission === "function";
 
-    if (!needsPermission) {
+    if (typeof motion?.requestPermission !== "function") {
       if (motion) enableMotion();
       return;
     }
 
-    const tasks = [];
-    if (typeof motion?.requestPermission === "function") {
-      tasks.push(motion.requestPermission());
-    }
-    if (typeof orientation?.requestPermission === "function") {
-      tasks.push(orientation.requestPermission());
-    }
-
-    Promise.allSettled(tasks).then((results) => {
-      const granted = results.some(
-        (result) => result.status === "fulfilled" && result.value === "granted"
-      );
-      if (granted) enableMotion();
-    });
+    motion
+      .requestPermission()
+      .then((status) => {
+        if (status === "granted") {
+          enableMotion();
+          return;
+        }
+        if (typeof orientation?.requestPermission === "function") {
+          return orientation.requestPermission().then((alt) => {
+            if (alt === "granted") enableMotion();
+          });
+        }
+        return undefined;
+      })
+      .catch(() => {
+        // Tap still works.
+      });
   }
 
-  // touchend/click keep the iOS user-activation token better than pointerdown.
-  stage.addEventListener("touchend", requestMotionPermission, { once: true });
+  // touchend is the most reliable gesture token on iOS Safari.
+  stage.addEventListener("touchend", requestMotionPermission, {
+    once: true,
+    passive: true,
+  });
   stage.addEventListener("click", requestMotionPermission, { once: true });
 
   if (
