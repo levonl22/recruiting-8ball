@@ -54,6 +54,7 @@ const FORTUNES = [
   "You will walk out proud of how you showed up.",
   "An offer is in your near future.",
   "Today's rejection makes room for a better yes.",
+  "You're cooked.",
 ];
 
 const SHAKE_MS = 1000;
