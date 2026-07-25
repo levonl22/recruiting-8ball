@@ -66,7 +66,8 @@ export function createTriangleTexture(size = 1024) {
 function setFont(ctx, px) {
   ctx.font = `700 ${px}px ${FONT_STACK}`;
   if ("letterSpacing" in ctx) {
-    ctx.letterSpacing = `${px * 0.06}px`;
+    // Heavy tracking makes thin glyphs like ' disappear after downscale + bloom.
+    ctx.letterSpacing = `${Math.max(0, px * 0.02)}px`;
   }
 }
 
@@ -113,7 +114,7 @@ function tryWrap(ctx, words, px, size) {
 export function createFortuneTexture(text, size = 1024) {
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext("2d");
-  const words = text.replace(/[.']/g, "").toUpperCase().trim().split(/\s+/);
+  const words = text.replace(/\./g, "").toUpperCase().trim().split(/\s+/);
 
   let lines = null;
   let px = size * 0.05;
@@ -137,8 +138,8 @@ export function createFortuneTexture(text, size = 1024) {
   ctx.textBaseline = "middle";
   // Dark ink on the pale die: white text disappears once bloom lifts the center.
   ctx.fillStyle = "#082a52";
-  ctx.shadowColor = "rgba(226, 242, 255, 0.55)";
-  ctx.shadowBlur = px * 0.1;
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
   for (const line of lines) {
     ctx.fillText(line.text, TRI.tipX * size, line.y);
   }

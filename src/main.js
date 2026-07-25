@@ -54,16 +54,16 @@ const FORTUNES = [
   "You will walk out proud of how you showed up.",
   "An offer is in your near future.",
   "Today's rejection makes room for a better yes.",
-  "You're cooked.",
+  "You\u2019re cooked.",
 ];
 
 const SHAKE_MS = 1000;
 const ZOOM_MS = 900;
 const RESET_MS = 700;
-const MOTION_COOLDOWN_MS = 1200;
-const SHAKE_SPIKE = 2.8;
-const SHAKE_SCORE_NEED = 18;
-const SHAKE_WINDOW_MS = 600;
+const MOTION_COOLDOWN_MS = 1400;
+const SHAKE_SPIKE = 6;
+const SHAKE_SCORE_NEED = 45;
+const SHAKE_WINDOW_MS = 500;
 const DIE_DAMPING = 4.6;
 const DRAG_LIMIT = 0.5;
 
