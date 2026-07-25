@@ -509,46 +509,94 @@ async function init() {
     }
   });
 
-  function onDeviceMotion(event) {
-    const accel = event.accelerationIncludingGravity;
-    if (!accel) return;
+  let lastMotionSample = null;
+  let motionListening = false;
 
-    const magnitude = Math.hypot(accel.x || 0, accel.y || 0, accel.z || 0);
-    if (state === "idle" && magnitude > 12) {
-      shellPos.impulse((accel.x || 0) * 0.002, (accel.y || 0) * 0.002, 0);
-      dieRot.impulse((accel.y || 0) * 0.05, (accel.x || 0) * 0.05, 0);
+  function onDeviceMotion(event) {
+    // Safari often fills accelerationIncludingGravity; some WebKit builds only
+    // fill acceleration. Accept either.
+    const accel = event.accelerationIncludingGravity || event.acceleration;
+    if (!accel || (accel.x == null && accel.y == null && accel.z == null)) {
+      return;
+    }
+
+    const x = accel.x || 0;
+    const y = accel.y || 0;
+    const z = accel.z || 0;
+    const magnitude = Math.hypot(x, y, z);
+
+    // Frame-to-frame jerk — more reliable on iOS than absolute magnitude alone.
+    let delta = 0;
+    if (lastMotionSample) {
+      delta = Math.hypot(
+        x - lastMotionSample.x,
+        y - lastMotionSample.y,
+        z - lastMotionSample.z
+      );
+    }
+    lastMotionSample = { x, y, z };
+
+    if (state !== "idle") return;
+
+    if (delta > 3 || magnitude > 12) {
+      shellPos.impulse(x * 0.002, y * 0.002, 0);
+      dieRot.impulse(y * 0.05, x * 0.05, 0);
     }
 
     const now = Date.now();
-    if (
-      state === "idle" &&
-      magnitude > MOTION_THRESHOLD &&
-      now - lastMotionTrigger > MOTION_COOLDOWN_MS
-    ) {
+    const shook =
+      delta > 8 || magnitude > MOTION_THRESHOLD;
+    if (shook && now - lastMotionTrigger > MOTION_COOLDOWN_MS) {
       lastMotionTrigger = now;
       reveal();
     }
   }
 
   function enableMotion() {
+    if (motionListening) return;
+    motionListening = true;
     window.addEventListener("devicemotion", onDeviceMotion, { passive: true });
   }
 
-  const DeviceMotionEventRef = window.DeviceMotionEvent;
-  if (typeof DeviceMotionEventRef?.requestPermission === "function") {
-    stage.addEventListener(
-      "pointerdown",
-      async () => {
-        try {
-          const permission = await DeviceMotionEventRef.requestPermission();
-          if (permission === "granted") enableMotion();
-        } catch {
-          // Tap still works.
-        }
-      },
-      { once: true }
-    );
-  } else if (DeviceMotionEventRef) {
+  // iOS Safari requires requestPermission() in a direct user-gesture turn.
+  // Call it synchronously (no async/await), and ask for orientation too —
+  // WebKit gates both behind the same prompt on many versions.
+  function requestMotionPermission() {
+    const motion = window.DeviceMotionEvent;
+    const orientation = window.DeviceOrientationEvent;
+    const needsPermission =
+      typeof motion?.requestPermission === "function" ||
+      typeof orientation?.requestPermission === "function";
+
+    if (!needsPermission) {
+      if (motion) enableMotion();
+      return;
+    }
+
+    const tasks = [];
+    if (typeof motion?.requestPermission === "function") {
+      tasks.push(motion.requestPermission());
+    }
+    if (typeof orientation?.requestPermission === "function") {
+      tasks.push(orientation.requestPermission());
+    }
+
+    Promise.allSettled(tasks).then((results) => {
+      const granted = results.some(
+        (result) => result.status === "fulfilled" && result.value === "granted"
+      );
+      if (granted) enableMotion();
+    });
+  }
+
+  // touchend/click keep the iOS user-activation token better than pointerdown.
+  stage.addEventListener("touchend", requestMotionPermission, { once: true });
+  stage.addEventListener("click", requestMotionPermission, { once: true });
+
+  if (
+    window.DeviceMotionEvent &&
+    typeof window.DeviceMotionEvent.requestPermission !== "function"
+  ) {
     enableMotion();
   }
 
