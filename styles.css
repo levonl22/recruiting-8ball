@@ -100,11 +100,11 @@ body {
   white-space: nowrap;
 }
 
-/* Shown only when WebGL is unavailable.
-   display:flex must not win over [hidden] or both prompts show during load. */
+/* Created in JS only when WebGL is unavailable */
 .fallback {
   width: min(100%, var(--stage-max-w));
   max-height: 100%;
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -113,14 +113,6 @@ body {
   text-align: center;
   cursor: pointer;
   background: radial-gradient(ellipse 70% 45% at 50% 42%, #123a7a 0%, #01040b 72%);
-}
-
-.fallback[hidden] {
-  display: none !important;
-}
-
-.fallback:not([hidden]) {
-  display: flex;
 }
 
 .fallback .prompt {
