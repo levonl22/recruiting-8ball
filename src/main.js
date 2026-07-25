@@ -70,11 +70,11 @@ const CAM_ZOOM = new Vector3(0, 0, 2.62);
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("scene");
 const liveEl = document.getElementById("live");
+const fallbackEl = document.getElementById("fallback");
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let lastFortuneIndex = -1;
-let fallbackEl = null;
 
 function pickFortune() {
   let index = Math.floor(Math.random() * FORTUNES.length);
@@ -93,17 +93,7 @@ function easeInOutCubic(t) {
 
 function startFallback() {
   stage.hidden = true;
-
-  fallbackEl = document.createElement("div");
-  fallbackEl.className = "fallback";
-  fallbackEl.innerHTML = `
-    <p class="prompt">
-      Shake for your<br />
-      <span class="accent">recruiting</span> fortune
-    </p>
-    <p class="fallback-fortune"></p>
-  `;
-  document.body.appendChild(fallbackEl);
+  fallbackEl.hidden = false;
 
   const output = fallbackEl.querySelector(".fallback-fortune");
   fallbackEl.addEventListener("click", () => {
