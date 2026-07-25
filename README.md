@@ -4,6 +4,8 @@ A real-time 3D Magic 8 Ball for recruiting fortunes: glossy black shell, recesse
 
 Tap, drag, or shake your phone. Tap again to reset.
 
+**Live:** [https://levonl22.github.io/recruiting-8ball/](https://levonl22.github.io/recruiting-8ball/)
+
 ## Run it locally
 
 No build step. Serve the folder:
