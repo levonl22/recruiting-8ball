@@ -354,6 +354,17 @@ async function init() {
     );
   }
 
+  // Android Chrome/Firefox support this. iOS Safari has no web haptic API.
+  function pulseHaptic() {
+    try {
+      if (typeof navigator.vibrate === "function") {
+        navigator.vibrate([18, 32, 18]);
+      }
+    } catch {
+      // Ignore — unsupported or blocked.
+    }
+  }
+
   function shakeSequence() {
     const beats = [
       [-3.6, 1.7],
@@ -364,6 +375,7 @@ async function init() {
       [1.5, -0.7],
     ];
 
+    pulseHaptic();
     beats.forEach(([x, y], index) => {
       setTimeout(() => {
         shellPos.impulse(x * 0.055, y * 0.05, 0);
@@ -391,6 +403,7 @@ async function init() {
     applyFortune(text);
 
     if (reduceMotion) {
+      pulseHaptic();
       tweenZoom(1, 260);
       fadeMesh(ball.mark, 0, 160);
       fadeMesh(ball.words, 1, 220, 120);
